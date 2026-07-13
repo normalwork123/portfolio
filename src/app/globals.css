@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0a0a0a;
+  --foreground: #ffffff;
+  --accent: #d4a843;
+  --accent-bright: #f0c75e;
+  --accent-deep: #a87f2a;
+  --muted: #9ca3af;
+  --surface: #141414;
+  --border: #262626;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background-color: var(--accent);
+  color: #0a0a0a;
+}
+
+/* Thin, luxe scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a2a;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-deep);
+}
+
+@layer utilities {
+  /* Gold gradient text for display headings */
+  .text-gold-gradient {
+    background-image: linear-gradient(
+      120deg,
+      var(--accent-bright),
+      var(--accent),
+      var(--accent-deep)
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Radial atmosphere glow used behind hero content */
+  .hero-glow {
+    background: radial-gradient(
+      ellipse 60% 50% at 50% 40%,
+      rgba(212, 168, 67, 0.18),
+      rgba(212, 168, 67, 0.06) 40%,
+      transparent 70%
+    );
+  }
+
+  /* Soft top/bottom fade to dissolve hard section seams */
+  .section-fade-top {
+    -webkit-mask-image: linear-gradient(to bottom, transparent, black 8%);
+    mask-image: linear-gradient(to bottom, transparent, black 8%);
+  }
+
+  /* Subtle glass surface for premium cards */
+  .glass {
+    background: rgba(255, 255, 255, 0.02);
+    backdrop-filter: blur(6px);
+  }
+}
+
+/* Respect users who prefer reduced motion: disable all CSS animation/transition */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,89 @@
+# GitLab CI/CD pipeline for deploying the Next.js portfolio to Vercel.
+# Stages: install -> verify -> build -> deploy
+# Deployment to production only happens on the `main` branch.
+# Required CI/CD variables (Settings -> CI/CD -> Variables), all masked + protected:
+#   VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
+
+image: node:20-alpine
+
+stages:
+  - install
+  - verify
+  - build
+  - deploy
+
+# Cache node_modules keyed on package-lock.json so unchanged deps are reused.
+cache:
+  key:
+    files:
+      - package-lock.json
+  paths:
+    - node_modules/
+
+install:
+  stage: install
+  script:
+    - npm ci
+  artifacts:
+    paths:
+      - node_modules/
+    expire_in: 1 hour
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+lint:
+  stage: verify
+  needs:
+    - install
+  script:
+    - npm run lint
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+type-check:
+  stage: verify
+  needs:
+    - install
+  script:
+    # Runs `tsc --noEmit` to surface TypeScript errors independently of next build.
+    - npm run type-check
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+build:
+  stage: build
+  needs:
+    - lint
+    - type-check
+  script:
+    # `npm run build` runs `next build`, which fails on TypeScript errors early.
+    - npm run build
+  artifacts:
+    paths:
+      - .next/
+    expire_in: 1 hour
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+deploy:
+  stage: deploy
+  needs:
+    - build
+  # Vercel CLI expects org/project linkage via these env vars.
+  variables:
+    VERCEL_ORG_ID: $VERCEL_ORG_ID
+    VERCEL_PROJECT_ID: $VERCEL_PROJECT_ID
+  script:
+    - npm install --global vercel
+    - vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+    - vercel build --prod --token=$VERCEL_TOKEN
+    - vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN
+  environment:
+    name: production
+    url: https://portofoliov1-eta.vercel.app
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
