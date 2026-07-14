@@ -6,7 +6,6 @@ const config: Config = {
     extend: {
       colors: {
         background: "#0a0a0a",
-        surface: "#141414",
         accent: {
           DEFAULT: "#d4a843",
           bright: "#f0c75e",
@@ -45,6 +44,7 @@ const config: Config = {
       animation: {
         "fade-up": "fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both",
         float: "float 6s ease-in-out infinite",
+        shimmer: "shimmer 3.5s linear infinite",
       },
     },
   },

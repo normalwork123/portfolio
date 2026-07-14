@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowRight, ChevronDown } from "lucide-react";
+import { ArrowRight, ChevronDown, Download } from "lucide-react";
 import BadgePhysics from "@/components/three/BadgePhysics";
 
 export default function Hero() {
@@ -34,13 +34,18 @@ export default function Hero() {
         <div className="max-w-2xl">
           <motion.span
             {...enter(0)}
-            className="mb-7 inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/[0.08] px-4 py-1.5 text-sm text-accent shadow-glow"
+            className="relative mb-7 inline-flex items-center gap-2 overflow-hidden rounded-full border border-accent/30 bg-accent/[0.08] px-4 py-1.5 text-sm text-accent shadow-glow"
           >
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
             </span>
             Available for work
+            {/* Gold sheen sweep — disabled under prefers-reduced-motion via globals.css */}
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-0 animate-shimmer bg-[linear-gradient(110deg,transparent_35%,rgba(240,199,94,0.28)_50%,transparent_65%)] bg-[length:200%_100%]"
+            />
           </motion.span>
 
           <motion.h1
@@ -82,6 +87,22 @@ export default function Hero() {
               className="inline-flex items-center gap-2 rounded-full border border-white/15 px-7 py-3.5 font-semibold text-white/90 transition-colors duration-300 hover:border-accent/60 hover:text-accent"
             >
               Get in Touch
+            </a>
+
+            {/*
+              Resume download. Drop the PDF at public/Harsh-Rai-CV.pdf (or update
+              the href below) and the `download` attribute handles the rest.
+            */}
+            <a
+              href="/Harsh-Rai-CV.pdf"
+              download
+              className="group inline-flex items-center gap-2 rounded-full border border-accent/40 bg-accent/[0.06] px-7 py-3.5 font-semibold text-accent transition-colors duration-300 hover:bg-accent/15 hover:text-accent-bright"
+            >
+              <Download
+                size={18}
+                className="transition-transform duration-300 group-hover:translate-y-0.5"
+              />
+              Download CV
             </a>
           </motion.div>
         </div>

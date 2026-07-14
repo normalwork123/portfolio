@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { Github, ExternalLink, Check, Star, GitFork } from "lucide-react";
 import Reveal from "@/components/ui/Reveal";
 
@@ -13,11 +14,87 @@ interface CaseStudy {
   /** Optional links. When empty the button is hidden. */
   readonly github?: string;
   readonly demo?: string;
+  /**
+   * Optional project screenshot/mockup. When supplied it renders via
+   * next/image with a blur placeholder; when absent a browser-chrome
+   * mockup frame is drawn instead so no card is left visually blank.
+   */
+  readonly thumbnail?: string;
   /** Highlights the card as the featured project. */
   readonly featured?: boolean;
   /** Optional repo metrics. Render only when a real value is provided. */
   readonly stars?: number;
   readonly forks?: number;
+}
+
+/** Tiny dark pixel used as the blur-up placeholder for real thumbnails. */
+const THUMB_BLUR_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+/** Derives a friendly host string for the mockup's URL bar. */
+function thumbUrl(study: CaseStudy): string {
+  const link = study.demo || study.github;
+  if (link) {
+    try {
+      const { host, pathname } = new URL(link);
+      const path = pathname.replace(/\/$/, "");
+      return `${host}${path}`.replace(/^www\./, "");
+    } catch {
+      /* fall through to slug */
+    }
+  }
+  return `harshrai.dev/${study.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+}
+
+/**
+ * Project visual for a case study. Renders the real screenshot when a
+ * `thumbnail` is provided, otherwise a tasteful browser-chrome mockup so the
+ * card always leads with an image-shaped frame.
+ */
+function ProjectThumbnail({ study }: { study: CaseStudy }) {
+  return (
+    <div className="relative mb-8 aspect-[16/7] w-full overflow-hidden rounded-2xl border border-white/10 bg-[#0d0d0d]">
+      {study.thumbnail ? (
+        <Image
+          src={study.thumbnail}
+          alt={`${study.title} preview`}
+          fill
+          sizes="(max-width: 768px) 100vw, 1024px"
+          placeholder="blur"
+          blurDataURL={THUMB_BLUR_DATA_URL}
+          className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+        />
+      ) : (
+        <div className="flex h-full flex-col">
+          {/* Browser chrome bar */}
+          <div className="flex items-center gap-3 border-b border-white/10 bg-white/[0.03] px-4 py-2.5">
+            <span className="flex gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-white/15" />
+              <span className="h-2.5 w-2.5 rounded-full bg-white/15" />
+              <span className="h-2.5 w-2.5 rounded-full bg-white/15" />
+            </span>
+            <span className="flex-1 truncate rounded-md border border-white/10 bg-black/40 px-3 py-1 text-center text-[11px] text-white/40">
+              {thumbUrl(study)}
+            </span>
+          </div>
+          {/* Mock viewport */}
+          <div className="relative flex flex-1 items-center justify-center overflow-hidden">
+            {/* Cinematic gold wash + subtle grid */}
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_80%_at_50%_0%,rgba(212,168,67,0.16),transparent_70%)]" />
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:32px_32px] [mask-image:radial-gradient(ellipse_70%_70%_at_50%_40%,black,transparent)]" />
+            <div className="relative px-6 text-center">
+              <p className="text-[10px] font-medium uppercase tracking-[0.25em] text-accent/70">
+                {study.category}
+              </p>
+              <p className="mt-2 text-xl font-bold tracking-tight text-gold-gradient sm:text-2xl">
+                {study.title}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 const caseStudies: ReadonlyArray<CaseStudy> = [
@@ -143,6 +220,9 @@ export default function Work() {
               />
 
               <div className="relative">
+                {/* Project visual */}
+                <ProjectThumbnail study={study} />
+
                 {/* Header */}
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div>

@@ -3,6 +3,9 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/ui/Navbar";
 import Footer from "@/components/ui/Footer";
+import ScrollProgress from "@/components/ui/ScrollProgress";
+import ScrollJourney from "@/components/ui/ScrollJourney";
+import CometCursor from "@/components/ui/CometCursor";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -74,6 +77,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body className="min-h-screen bg-background font-sans text-white antialiased">
+        <ScrollProgress />
+        <ScrollJourney />
+        <CometCursor />
         <Navbar />
         <main>{children}</main>
         <Footer />

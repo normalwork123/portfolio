@@ -4,14 +4,31 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
 /**
- * Cinematic multi-layer particle field.
+ * Liquid-metal flow-field background.
  *
- * Three depth layers (far / mid / near) parallax against the pointer to create
- * atmosphere and dimensionality. Performance is protected by:
- *  - capping device pixel ratio,
- *  - scaling particle counts down on small screens,
- *  - pausing the render loop when the tab or canvas is off-screen,
- *  - honouring `prefers-reduced-motion`.
+ * A fullscreen GLSL shader renders a slowly churning gold/black noise field —
+ * like heat distortion off molten metal. It replaces the earlier `THREE.Points`
+ * ember field but keeps the exact same integration discipline so it stays a
+ * cheap, self-contained layer sitting behind the hero: the ID card floats on
+ * top of it unchanged.
+ *
+ * Technique: a single `PlaneGeometry(2, 2)` whose vertices already span clip
+ * space, so the vertex shader writes `gl_Position` directly — no perspective
+ * camera, no FOV/resize math, just a `u_resolution` update on resize. Colour
+ * comes from layered fBm value-noise (5 octaves) banded across the site's gold
+ * palette; the pointer adds a soft local brightening.
+ *
+ * Performance discipline matches the rest of the codebase:
+ *  - device pixel ratio capped at 2,
+ *  - render loop paused off-screen (IntersectionObserver) and when the tab is
+ *    hidden (visibilitychange),
+ *  - full geometry / material / renderer disposal + listener cleanup on unmount,
+ *  - `prefers-reduced-motion` freezes `u_time`, rendering a single static frame
+ *    instead of an animation.
+ *
+ * Unlike the ID card, this layer is *not* disabled on mobile — a fullscreen
+ * fragment shader is cheap on the GPU at any resolution. If low-end devices
+ * struggle, reduce the fBm loop from 5 octaves to 3 before disabling anything.
  */
 export default function Scene() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -23,69 +40,164 @@ export default function Scene() {
     const prefersReduced = window.matchMedia(
       "(prefers-reduced-motion: reduce)"
     ).matches;
-    const isSmall = window.innerWidth < 768;
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x0a0a0a, 0.06);
+    // The vertex shader writes clip-space positions directly, so the camera's
+    // matrices are never consulted — a bare Camera is all `render()` needs.
+    const camera = new THREE.Camera();
 
-    const camera = new THREE.PerspectiveCamera(
-      75,
-      container.clientWidth / container.clientHeight,
-      0.1,
-      1000
-    );
-    camera.position.z = 6;
-
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
     renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    let pixelRatio = Math.min(window.devicePixelRatio, 2);
+    renderer.setPixelRatio(pixelRatio);
     container.appendChild(renderer.domElement);
 
-    // Build one parallax layer of points at a given depth + visual weight.
-    const makeLayer = (
-      count: number,
-      spread: number,
-      size: number,
-      opacity: number,
-      color: number
-    ): THREE.Points => {
-      const positions = new Float32Array(count * 3);
-      for (let i = 0; i < positions.length; i += 1) {
-        positions[i] = (Math.random() - 0.5) * spread;
-      }
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-      const material = new THREE.PointsMaterial({
-        color,
-        size,
-        transparent: true,
-        opacity,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      });
-      return new THREE.Points(geometry, material);
+    // Canvas size in device pixels; the shader only uses its ratio (aspect),
+    // so css-vs-device px is immaterial as long as we stay consistent.
+    const resolution = new THREE.Vector2(
+      container.clientWidth * pixelRatio,
+      container.clientHeight * pixelRatio
+    );
+
+    // Aspect-corrected pointer, matching the shader's `aspectUv` space. Seeded
+    // far off-screen so the highlight is invisible until the user moves.
+    const mouse = new THREE.Vector2(999, 999);
+
+    const geometry = new THREE.PlaneGeometry(2, 2);
+
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        u_time: { value: 0 },
+        u_resolution: { value: resolution },
+        u_mouse: { value: mouse },
+      },
+      depthTest: false,
+      depthWrite: false,
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        precision highp float;
+        uniform float u_time;
+        uniform vec2 u_resolution;
+        uniform vec2 u_mouse;
+        varying vec2 vUv;
+
+        vec2 hash(vec2 p) {
+          p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+          return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);
+        }
+
+        float noise(vec2 p) {
+          const float K1 = 0.366025404;
+          const float K2 = 0.211324865;
+          vec2 i = floor(p + (p.x + p.y) * K1);
+          vec2 a = p - i + (i.x + i.y) * K2;
+          vec2 o = (a.x > a.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+          vec2 b = a - o + K2;
+          vec2 c = a - 1.0 + 2.0 * K2;
+          vec3 h = max(0.5 - vec3(dot(a, a), dot(b, b), dot(c, c)), 0.0);
+          vec3 n = h * h * h * h * vec3(dot(a, hash(i)), dot(b, hash(i + o)), dot(c, hash(i + 1.0)));
+          return dot(n, vec3(70.0));
+        }
+
+        float fbm(vec2 p) {
+          float f = 0.0;
+          float amp = 0.5;
+          for (int i = 0; i < 5; i++) {
+            f += amp * noise(p);
+            p *= 2.02;
+            amp *= 0.5;
+          }
+          return f;
+        }
+
+        void main() {
+          vec2 uv = vUv;
+          vec2 aspectUv = (uv - 0.5) * vec2(u_resolution.x / u_resolution.y, 1.0);
+
+          float t = u_time * 0.06;
+          vec2 flow = aspectUv * 2.2 + vec2(fbm(aspectUv * 1.5 + t), fbm(aspectUv * 1.5 - t)) * 0.6;
+          float n = fbm(flow + t);
+
+          vec2 toMouse = aspectUv - u_mouse;
+          float mouseInfluence = smoothstep(0.6, 0.0, length(toMouse));
+          n += mouseInfluence * 0.15;
+
+          vec3 black = vec3(0.039, 0.039, 0.039);
+          vec3 deep  = vec3(0.659, 0.498, 0.165);
+          vec3 gold  = vec3(0.831, 0.659, 0.263);
+          vec3 bright= vec3(0.941, 0.780, 0.369);
+
+          vec3 color = mix(black, deep, smoothstep(0.15, 0.45, n));
+          color = mix(color, gold, smoothstep(0.45, 0.7, n));
+          color = mix(color, bright, smoothstep(0.7, 0.95, n));
+
+          float vignette = 1.0 - smoothstep(0.6, 1.1, length(aspectUv));
+          color *= vignette;
+
+          gl_FragColor = vec4(color, 1.0);
+        }
+      `,
+    });
+
+    const quad = new THREE.Mesh(geometry, material);
+    quad.frustumCulled = false;
+    scene.add(quad);
+
+    const render = (): void => {
+      renderer.render(scene, camera);
     };
 
-    const scale = isSmall ? 0.5 : 1;
-    const layers = [
-      makeLayer(Math.round(700 * scale), 18, 0.018, 0.35, 0x8a6f2e), // far
-      makeLayer(Math.round(500 * scale), 13, 0.026, 0.6, 0xd4a843), // mid
-      makeLayer(Math.round(220 * scale), 9, 0.04, 0.9, 0xf0c75e), // near
-    ];
-    layers.forEach((layer) => scene.add(layer));
-
-    // Pointer-driven parallax target (eased toward each frame).
-    const pointer = { x: 0, y: 0 };
-    const target = { x: 0, y: 0 };
+    // --- Aspect-corrected pointer tracking ---------------------------------
+    // Map screen pixels into the shader's `aspectUv` space: uv in 0..1 (Y up),
+    // then centred and scaled by aspect exactly like the fragment shader.
     const handlePointer = (e: PointerEvent): void => {
-      target.x = (e.clientX / window.innerWidth - 0.5) * 2;
-      target.y = (e.clientY / window.innerHeight - 0.5) * 2;
+      const aspect = resolution.x / resolution.y;
+      const mx = e.clientX / window.innerWidth;
+      const my = 1 - e.clientY / window.innerHeight;
+      mouse.set((mx - 0.5) * aspect, my - 0.5);
     };
     if (!prefersReduced) {
       window.addEventListener("pointermove", handlePointer, { passive: true });
     }
 
-    // Pause rendering when the canvas scrolls out of view to save the GPU.
+    // --- Reduced motion: one static, intentional-looking frame -------------
+    if (prefersReduced) {
+      // A fixed, non-trivial time so the frozen field shows structure rather
+      // than the flat t=0 arrangement.
+      material.uniforms.u_time.value = 12.0;
+      render();
+
+      const handleResizeStatic = (): void => {
+        pixelRatio = Math.min(window.devicePixelRatio, 2);
+        renderer.setPixelRatio(pixelRatio);
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        resolution.set(
+          container.clientWidth * pixelRatio,
+          container.clientHeight * pixelRatio
+        );
+        render();
+      };
+      window.addEventListener("resize", handleResizeStatic);
+
+      return () => {
+        window.removeEventListener("resize", handleResizeStatic);
+        window.removeEventListener("pointermove", handlePointer);
+        geometry.dispose();
+        material.dispose();
+        renderer.dispose();
+        if (renderer.domElement.parentNode === container) {
+          container.removeChild(renderer.domElement);
+        }
+      };
+    }
+
+    // --- Off-screen / hidden-tab pausing -----------------------------------
     let visible = true;
     const io = new IntersectionObserver(
       ([entry]) => {
@@ -97,36 +209,43 @@ export default function Scene() {
     io.observe(container);
 
     let frameId = 0;
+    let clock = 0; // accumulated seconds (pause-safe)
+    let last = performance.now();
     const loop = (): void => {
       if (!visible || document.hidden) {
         cancelAnimationFrame(frameId);
         return;
       }
 
-      pointer.x += (target.x - pointer.x) * 0.04;
-      pointer.y += (target.y - pointer.y) * 0.04;
+      const now = performance.now();
+      let dt = (now - last) / 1000;
+      last = now;
+      if (dt > 0.05) dt = 0.05; // clamp long frames (resume from pause, GC)
 
-      layers.forEach((layer, i) => {
-        const depth = (i + 1) * 0.12;
-        layer.rotation.y += prefersReduced ? 0 : 0.0004 * (i + 1);
-        layer.position.x = pointer.x * depth;
-        layer.position.y = -pointer.y * depth;
-      });
+      clock += dt;
+      material.uniforms.u_time.value = clock;
 
-      renderer.render(scene, camera);
+      render();
       frameId = requestAnimationFrame(loop);
     };
     loop();
 
     const handleVisibility = (): void => {
-      if (!document.hidden) loop();
+      if (!document.hidden) {
+        last = performance.now();
+        loop();
+      }
     };
     document.addEventListener("visibilitychange", handleVisibility);
 
     const handleResize = (): void => {
-      camera.aspect = container.clientWidth / container.clientHeight;
-      camera.updateProjectionMatrix();
+      pixelRatio = Math.min(window.devicePixelRatio, 2);
+      renderer.setPixelRatio(pixelRatio);
       renderer.setSize(container.clientWidth, container.clientHeight);
+      resolution.set(
+        container.clientWidth * pixelRatio,
+        container.clientHeight * pixelRatio
+      );
     };
     window.addEventListener("resize", handleResize);
 
@@ -136,10 +255,8 @@ export default function Scene() {
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("pointermove", handlePointer);
       document.removeEventListener("visibilitychange", handleVisibility);
-      layers.forEach((layer) => {
-        layer.geometry.dispose();
-        (layer.material as THREE.Material).dispose();
-      });
+      geometry.dispose();
+      material.dispose();
       renderer.dispose();
       if (renderer.domElement.parentNode === container) {
         container.removeChild(renderer.domElement);

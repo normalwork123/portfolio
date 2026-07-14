@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Menu, X } from "lucide-react";
 
 const links: ReadonlyArray<{ label: string; href: string }> = [
@@ -12,6 +13,7 @@ const links: ReadonlyArray<{ label: string; href: string }> = [
 ];
 
 export default function Navbar() {
+  const prefersReduced = useReducedMotion();
   const [scrolled, setScrolled] = useState(false);
   const [active, setActive] = useState("#home");
   const [open, setOpen] = useState(false);
@@ -51,11 +53,18 @@ export default function Navbar() {
       }`}
     >
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        {/* Wordmark: HR monogram + name. Reads as a logo, not a sentence. */}
         <Link
           href="#home"
-          className="text-lg font-semibold tracking-tight text-white"
+          aria-label="Harsh Rai — home"
+          className="group flex items-center gap-2.5"
         >
-          Welcome to my Portfolio Website..<span className="text-accent">.</span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-accent/40 bg-accent/10 text-sm font-bold tracking-tight text-accent transition-colors duration-300 group-hover:border-accent/70 group-hover:bg-accent/20">
+            HR
+          </span>
+          <span className="hidden text-base font-semibold tracking-tight text-white sm:inline">
+            Harsh Rai
+          </span>
         </Link>
 
         {/* Desktop nav */}
@@ -98,34 +107,46 @@ export default function Navbar() {
       </nav>
 
       {/* Mobile menu */}
-      {open && (
-        <div className="border-t border-white/10 bg-background/95 backdrop-blur-md md:hidden">
-          <ul className="flex flex-col px-6 py-4">
-            {links.map((link) => (
-              <li key={link.href}>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="mobile-menu"
+            initial={{ opacity: 0, y: prefersReduced ? 0 : -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: prefersReduced ? 0 : -8 }}
+            transition={{
+              duration: prefersReduced ? 0 : 0.2,
+              ease: [0.22, 1, 0.36, 1],
+            }}
+            className="overflow-hidden border-t border-white/10 bg-background/95 backdrop-blur-md md:hidden"
+          >
+            <ul className="flex flex-col px-6 py-4">
+              {links.map((link) => (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    onClick={() => setOpen(false)}
+                    className={`block py-3 text-base transition-colors ${
+                      active === link.href ? "text-accent" : "text-white/80"
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+              <li>
                 <Link
-                  href={link.href}
+                  href="#contact"
                   onClick={() => setOpen(false)}
-                  className={`block py-3 text-base transition-colors ${
-                    active === link.href ? "text-accent" : "text-white/80"
-                  }`}
+                  className="mt-2 block rounded-full bg-accent px-4 py-3 text-center font-semibold text-background"
                 >
-                  {link.label}
+                  Hire Me
                 </Link>
               </li>
-            ))}
-            <li>
-              <Link
-                href="#contact"
-                onClick={() => setOpen(false)}
-                className="mt-2 block rounded-full bg-accent px-4 py-3 text-center font-semibold text-background"
-              >
-                Hire Me
-              </Link>
-            </li>
-          </ul>
-        </div>
-      )}
+            </ul>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </header>
   );
 }
