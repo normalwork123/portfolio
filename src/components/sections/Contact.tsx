@@ -1,15 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { getSupabaseClient } from "@/lib/supabase";
 import Reveal from "@/components/ui/Reveal";
-
-// Web3Forms delivers the actual email to harshraiwork600@gmail.com. This access
-// key is public by design — it only permits sending mail to the account owner's
-// inbox. Get one by signing up at https://web3forms.com with the address
-// harshraiwork600@gmail.com, then set NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY.
-const WEB3FORMS_ACCESS_KEY = process.env.NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY ?? "";
-const isEmailConfigured: boolean = Boolean(WEB3FORMS_ACCESS_KEY);
 
 interface FormState {
   readonly name: string;
@@ -17,7 +9,12 @@ interface FormState {
   readonly message: string;
 }
 
-type Status = "idle" | "submitting" | "success" | "error" | "unconfigured";
+type Status = "idle" | "submitting" | "success" | "error";
+
+interface ApiResponse {
+  success: boolean;
+  error?: string;
+}
 
 const initialForm: FormState = { name: "", email: "", message: "" };
 
@@ -27,60 +24,36 @@ const inputClass =
 export default function Contact() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [status, setStatus] = useState<Status>("idle");
+  const [errorMessage, setErrorMessage] = useState<string>("");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
 
-    // Web3Forms is what actually emails the owner. With no key there is no
-    // delivery path, so bail early and point the visitor at the social links.
-    if (!isEmailConfigured) {
-      setStatus("unconfigured");
-      return;
-    }
-
     setStatus("submitting");
+    setErrorMessage("");
 
-    // Optional: also persist a copy to Supabase when configured. Best-effort —
-    // a failed insert must never block the email from sending, so we don't
-    // await it or surface its errors.
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      void supabase
-        .from("messages")
-        .insert({
-          name: form.name,
-          email: form.email,
-          message: form.message,
-        })
-        .then(
-          () => {},
-          () => {}
-        );
-    }
-
-    // Primary path: deliver the message as an email via Web3Forms.
     try {
-      const res = await fetch("https://api.web3forms.com/submit", {
+      const res = await fetch("/api/contact", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          access_key: WEB3FORMS_ACCESS_KEY,
           name: form.name,
           email: form.email,
           message: form.message,
-          subject: "New portfolio contact form message",
         }),
       });
-      const data: { success?: boolean } = await res.json();
+
+      const data: ApiResponse = await res.json();
 
       if (!res.ok || !data.success) {
+        setErrorMessage(
+          data.error ?? "Something went wrong. Please try again."
+        );
         setStatus("error");
         return;
       }
     } catch {
+      setErrorMessage("Unable to reach the server. Please try again.");
       setStatus("error");
       return;
     }
@@ -144,27 +117,13 @@ export default function Contact() {
               {status === "submitting" ? "Sending..." : "Send Message"}
             </button>
 
-            {!isEmailConfigured && (
-              <p className="text-sm text-white/40">
-                Messaging is currently unavailable. Reach me via the social links
-                in the footer.
-              </p>
-            )}
-            {status === "unconfigured" && (
-              <p className="text-sm text-amber-400">
-                Messaging is not configured yet. Please use the social links
-                below.
-              </p>
-            )}
             {status === "success" && (
               <p className="text-sm text-accent">
-                Thanks! Your message was sent.
+                Message sent successfully.
               </p>
             )}
             {status === "error" && (
-              <p className="text-sm text-red-400">
-                Something went wrong. Please try again.
-              </p>
+              <p className="text-sm text-red-400">{errorMessage}</p>
             )}
           </form>
         </Reveal>
